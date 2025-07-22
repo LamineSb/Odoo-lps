@@ -2,7 +2,7 @@
 # Installation Odoo 18 avec image Tecnativa Doodba - VERSION OPTIMISEE
 
 set -e
-exec > >(tee /var/log/user-data.log) 2>&1
+#exec > >(tee /var/log/user-data.log) 2>&1
 
 echo "=== DEBUT INSTALLATION ==="
 
