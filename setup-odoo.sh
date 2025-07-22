@@ -6,23 +6,7 @@ exec > >(tee /var/log/user-data.log) 2>&1
 
 echo "=== DEBUT INSTALLATION ==="
 
-# Injection de la variable timezone envoyée par Terraform (en minuscule)
-TIMEZONE="${timezone}"
 
-echo "Odoo Version: ${odoo_version}"
-echo "Ubuntu Version: ${ubuntu_version}"
-echo "Timezone avant fallback: '${TIMEZONE}'"
-
-if [ -z "$TIMEZONE" ]; then
-  echo "WARNING: TIMEZONE vide, fallback vers Europe/Paris" >> /var/log/user-data.log
-  TIMEZONE="Europe/Paris"
-fi
-
-echo "Timezone finale utilisée: '${TIMEZONE}'"
-
-timedatectl set-timezone "$TIMEZONE"
-
-echo "Configuration timezone terminée."
 
 # Variables Terraform
 PROJECT_NAME="${project_name}"
@@ -45,12 +29,21 @@ SHARED_BUFFERS="${shared_buffers}"
 WORK_MEM="${work_mem}"
 UBUNTU_VERSION="${ubuntu_version}"
 
-if [ -z "${TIMEZONE}" ]; then
+
+echo "Odoo Version: ${odoo_version}"
+echo "Ubuntu Version: ${ubuntu_version}"
+echo "Timezone avant fallback: '${TIMEZONE}'"
+
+if [ -z "$TIMEZONE" ]; then
   echo "WARNING: TIMEZONE vide, fallback vers Europe/Paris" >> /var/log/user-data.log
   TIMEZONE="Europe/Paris"
 fi
 
-timedatectl set-timezone "${TIMEZONE}"
+echo "Timezone finale utilisée: '${TIMEZONE}'"
+
+timedatectl set-timezone "$TIMEZONE"
+
+echo "Configuration timezone terminée."
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [${region_code}] - $1"
 }
