@@ -29,7 +29,6 @@ SHARED_BUFFERS="${shared_buffers}"
 WORK_MEM="${work_mem}"
 UBUNTU_VERSION="${ubuntu_version}"
 
-echo "Configuration timezone terminée."
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [${region_code}] - $1"
 }
