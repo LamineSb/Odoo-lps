@@ -1,15 +1,15 @@
 #!/bin/bash
-# Installation Odoo evolutive avec base automatique - VERSION CORRIGEE
+# Installation Odoo 18 avec image Tecnativa Doodba - VERSION OPTIMISEE
 
 set -e
 exec > >(tee /var/log/user-data.log) 2>&1
 
-# Variables Terraform - CORRECTION: utilisation correcte des variables
+# Variables Terraform
 PROJECT_NAME="${project_name}"
 REGION_CODE="${region_code}"
 REGION_CITY="${region_city}"
 ENVIRONMENT="${environment}"
-ODOO_VERSION="${odoo_version}"
+ODOO_VERSION="18.0"  # Version fixe pour Odoo 18
 ADMIN_PASSWORD="${admin_password}"
 DB_PASSWORD="${db_password}"
 MASTER_PASSWORD="${master_password}"
@@ -30,6 +30,7 @@ log() {
 }
 
 log "=== DEBUT INSTALLATION ${project_name} - ${region_city} (${region_code}) ==="
+log "Odoo Version: 18.0 avec Doodba"
 log "Ubuntu Version: ${ubuntu_version}"
 log "Timezone: ${timezone}"
 
@@ -49,7 +50,7 @@ systemctl start docker
 systemctl enable docker
 usermod -aG docker ubuntu
 
-# Installation Docker Compose - CORRECTION: installation explicite
+# Installation Docker Compose
 log "Installation Docker Compose..."
 curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
@@ -61,37 +62,103 @@ apt install -y nginx htop curl wget git jq tree python3-pip
 
 # Structure
 log "Creation structure..."
-mkdir -p /opt/${project_name}/{configs,scripts,backups,logs,custom-addons}
+mkdir -p /opt/${project_name}/{configs,scripts,backups,logs,custom-addons,private}
 chown -R ubuntu:ubuntu /opt/${project_name}
 
-# Configuration Odoo avancée
-log "Configuration Odoo..."
+# Configuration Odoo avec Doodba
+log "Configuration Odoo pour Doodba..."
 cat > /opt/${project_name}/configs/odoo.conf << ODOOCONF
 [options]
-addons_path = /mnt/extra-addons,/usr/lib/python3/dist-packages/odoo/addons
-data_dir = /var/lib/odoo
+# Configuration Doodba optimisée
+addons_path = /opt/odoo/custom/src/private,/opt/odoo/custom/src/repos,/opt/odoo/auto/addons,/opt/odoo/addons
+data_dir = /opt/odoo/data
 logfile = /var/log/odoo/odoo.log
 log_level = info
+
+# Authentification
 admin_passwd = ${master_password}
+
+# Base de données
 db_host = db
 db_port = 5432
 db_user = odoo
 db_password = ${db_password}
 list_db = False
+db_maxconn = ${max_connections}
+
+# Réseau et proxy
 proxy_mode = True
+xmlrpc_interface = 0.0.0.0
+xmlrpc_port = 8069
+
+# Workers (0 = auto)
 workers = 0
-without_demo = $([ "${enable_demo}" = "true" ] && echo "False" || echo "True")
+max_cron_threads = 2
 
 # Configuration régionale
 timezone = ${timezone}
 default_language = ${default_language}
 
-# Configuration base de données
-db_maxconn = ${max_connections}
+# Démo
+without_demo = $([ "${enable_demo}" = "true" ] && echo "False" || echo "True")
+
+# Sécurité
+server_wide_modules = base,web
 ODOOCONF
 
-# Docker Compose avec configuration optimisée - CORRECTION: substitution de variables
-log "Configuration Docker Compose optimisee..."
+# Configuration repos.yaml pour Doodba
+log "Configuration repos.yaml..."
+cat > /opt/${project_name}/configs/repos.yaml << REPOSEOF
+# Configuration des repositories pour Doodba
+./odoo:
+  defaults:
+    depth: 1
+  remotes:
+    origin: https://github.com/odoo/odoo.git
+  target:
+    origin ${ODOO_VERSION}
+  merges:
+    - origin ${ODOO_VERSION}
+
+# Ajoutez ici d'autres repos si nécessaire
+# ./enterprise:
+#   defaults:
+#     depth: 1
+#   remotes:
+#     origin: https://github.com/odoo/enterprise.git
+#   target:
+#     origin ${ODOO_VERSION}
+#   merges:
+#     - origin ${ODOO_VERSION}
+REPOSEOF
+
+# Configuration addons.yaml pour Doodba
+log "Configuration addons.yaml..."
+cat > /opt/${project_name}/configs/addons.yaml << ADDONSEOF
+# Configuration des addons pour Doodba
+server_wide:
+  - base
+  - web
+
+odoo:
+  - account
+  - sale
+  - purchase
+  - stock
+  - crm
+  - project
+  - hr
+  - website
+  - mail
+  - calendar
+
+# Ajoutez ici vos addons personnalisés
+# private:
+#   - mon_addon_custom
+ADDONSEOF
+
+# Docker Compose avec Doodba
+log "Configuration Docker Compose avec Doodba..."
 cat > /opt/${project_name}/docker-compose.yml << DOCKEREOF
 version: '3.8'
 
@@ -104,19 +171,21 @@ services:
       POSTGRES_USER: odoo
       POSTGRES_PASSWORD: ${db_password}
       PGDATA: /var/lib/postgresql/data/pgdata
-      # Configuration PostgreSQL optimisée
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF8"
     volumes:
       - db_data:/var/lib/postgresql/data/pgdata
       - ./backups:/backups
-      - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
     command: |
       postgres
       -c max_connections=${max_connections}
       -c shared_buffers=${shared_buffers}
       -c work_mem=${work_mem}
       -c maintenance_work_mem=64MB
-      -c effective_cache_size=256MB
+      -c effective_cache_size=512MB
+      -c wal_buffers=16MB
+      -c checkpoint_completion_target=0.9
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U odoo"]
@@ -127,23 +196,53 @@ services:
       - odoo_network
 
   odoo:
-    image: odoo:${odoo_version}
+    image: tecnativa/doodba:18.0-latest
     container_name: ${project_name}-app-${region_code}
     depends_on:
       db:
         condition: service_healthy
     environment:
-      HOST: db
-      USER: odoo
-      PASSWORD: ${db_password}
+      # Configuration base
+      PGHOST: db
+      PGUSER: odoo
+      PGPASSWORD: ${db_password}
       PGDATABASE: postgres
-      # Configuration Odoo
+      
+      # Configuration Doodba
+      ODOO_CONF: /opt/odoo/etc/odoo.conf
+      REPOS_YAML: /opt/odoo/custom/src/repos.yaml
+      ADDONS_YAML: /opt/odoo/custom/src/addons.yaml
+      
+      # Configuration système
       TZ: ${timezone}
+      
+      # Mode développement (optionnel)
+      DOODBA_ENVIRONMENT: ${environment}
+      
+      # Configuration logging
+      LOG_LEVEL: INFO
+      
+      # Configuration workers
+      ODOO_WORKERS: 0
+      
+      # Configuration démo
+      WITHOUT_DEMO: $([ "${enable_demo}" = "true" ] && echo "False" || echo "True")
     volumes:
-      - odoo_data:/var/lib/odoo
-      - ./custom-addons:/mnt/extra-addons
-      - ./configs/odoo.conf:/etc/odoo/odoo.conf:ro
+      # Configuration
+      - ./configs/odoo.conf:/opt/odoo/etc/odoo.conf:ro
+      - ./configs/repos.yaml:/opt/odoo/custom/src/repos.yaml:ro
+      - ./configs/addons.yaml:/opt/odoo/custom/src/addons.yaml:ro
+      
+      # Données et logs
+      - odoo_data:/opt/odoo/data
       - ./logs:/var/log/odoo
+      
+      # Addons personnalisés
+      - ./custom-addons:/opt/odoo/custom/src/private
+      - ./private:/opt/odoo/custom/src/private-extra
+      
+      # Backups
+      - ./backups:/opt/odoo/backups
     ports:
       - "8069:8069"
     restart: unless-stopped
@@ -152,7 +251,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
     networks:
       - odoo_network
 
@@ -163,52 +262,70 @@ volumes:
 networks:
   odoo_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 DOCKEREOF
 
-# Configuration PostgreSQL optimisée
-log "Configuration PostgreSQL..."
-cat > /opt/${project_name}/configs/postgresql.conf << PGCONF
-# Configuration PostgreSQL pour Odoo
-max_connections = ${max_connections}
-shared_buffers = ${shared_buffers}
-work_mem = ${work_mem}
-maintenance_work_mem = 64MB
-effective_cache_size = 256MB
-wal_buffers = 16MB
-checkpoint_completion_target = 0.9
-random_page_cost = 1.1
-effective_io_concurrency = 200
-PGCONF
-
-# Configuration Nginx avec monitoring avancé - CORRECTION: substitution de variables
+# Configuration Nginx avec optimisations pour Doodba
 log "Configuration Nginx..."
 cat > /etc/nginx/sites-available/default << NGINXEOF
+upstream odoo {
+    server 127.0.0.1:8069;
+}
+
 server {
     listen 80 default_server;
     server_name _;
+    
+    # Security headers
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options DENY;
+    add_header X-XSS-Protection "1; mode=block";
     
     # Headers de monitoring
     add_header X-Region "${region_code}" always;
     add_header X-City "${region_city}" always;
     add_header X-Environment "${environment}" always;
     add_header X-Project "${project_name}" always;
-    add_header X-Ubuntu-Version "${ubuntu_version}" always;
+    add_header X-Odoo-Version "18.0-doodba" always;
+    
+    # Gzip compression
+    gzip on;
+    gzip_types text/css text/scss text/plain text/xml application/xml application/json application/javascript;
+    gzip_min_length 1000;
     
     # Configuration Odoo
     location / {
-        proxy_pass http://127.0.0.1:8069;
+        proxy_pass http://odoo;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
+        proxy_redirect off;
         
-        # Configuration pour Odoo longpolling
+        # Timeouts optimisés pour Doodba
+        proxy_read_timeout 720s;
+        proxy_connect_timeout 720s;
+        proxy_send_timeout 720s;
+        
+        # Buffer sizes
+        proxy_buffer_size 64k;
+        proxy_buffers 8 64k;
+        proxy_busy_buffers_size 64k;
+        
+        # WebSocket support pour longpolling
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
+    }
+    
+    # Cache pour fichiers statiques
+    location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg)$ {
+        proxy_pass http://odoo;
+        proxy_cache_valid 200 60m;
+        add_header Cache-Control "public, max-age=3600";
+        expires 1h;
     }
     
     # Endpoints de monitoring
@@ -220,20 +337,14 @@ server {
     
     location /status {
         access_log off;
-        return 200 "READY - ${project_name} - ${region_city} (${region_code}) - Ubuntu: ${ubuntu_version}";
+        return 200 "READY - ${project_name} - Odoo 18.0 Doodba - \$(date)";
         add_header Content-Type text/plain;
     }
     
-    location /info {
-        access_log off;
-        return 200 "Instance Info Available";
-        add_header Content-Type text/plain;
-    }
-    
-    # Métriques pour monitoring
+    # Métriques Prometheus
     location /metrics {
         access_log off;
-        return 200 "# HELP odoo_status Odoo application status\\n# TYPE odoo_status gauge\\nodoo_status{region=\\"${region_code}\\",city=\\"${region_city}\\"} 1\\n";
+        return 200 "# HELP odoo_status Odoo application status\\n# TYPE odoo_status gauge\\nodoo_status{version=\\"18.0\\",image=\\"doodba\\",region=\\"${region_code}\\",city=\\"${region_city}\\"} 1\\n";
         add_header Content-Type text/plain;
     }
 }
@@ -243,11 +354,11 @@ NGINXEOF
 log "Test et demarrage Nginx..."
 nginx -t && systemctl restart nginx && systemctl enable nginx
 
-# Service systemd pour auto-redémarrage - CORRECTION: chemin docker-compose
-log "Creation service auto-redemarrage..."
+# Service systemd
+log "Creation service systemd..."
 cat > /etc/systemd/system/${project_name}.service << SYSTEMDEOF
 [Unit]
-Description=${project_name} Docker Compose
+Description=${project_name} Odoo 18 Doodba
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
@@ -259,10 +370,10 @@ WorkingDirectory=/opt/${project_name}
 ExecStart=/usr/bin/docker-compose up -d
 ExecStop=/usr/bin/docker-compose down
 ExecReload=/usr/bin/docker-compose restart
-TimeoutStartSec=600
+TimeoutStartSec=900
 TimeoutStopSec=300
 User=root
-Environment=COMPOSE_HTTP_TIMEOUT=300
+Environment=COMPOSE_HTTP_TIMEOUT=600
 
 [Install]
 WantedBy=multi-user.target
@@ -274,277 +385,412 @@ systemctl enable ${project_name}.service
 # Scripts de gestion
 log "Creation scripts de gestion..."
 
-# Script de création automatique de base
+# Script de création de base adapté pour Doodba
 cat > /opt/${project_name}/scripts/create-odoo-db.py << 'PYTHONEOF'
 #!/usr/bin/env python3
 import requests
 import time
 import sys
 import os
+import json
 
-def wait_for_odoo(url, max_attempts=30):
+def wait_for_odoo(url, max_attempts=60):
+    """Attendre que Odoo soit accessible"""
     for i in range(max_attempts):
         try:
-            response = requests.get(f"{url}/web/health", timeout=10)
+            response = requests.get(f"{url}/web/database/selector", timeout=30)
             if response.status_code == 200:
+                print(f"✓ Odoo accessible après {i+1} tentatives")
                 return True
         except Exception as e:
-            print(f"Tentative {i+1}: {e}")
-        time.sleep(10)
+            print(f"Tentative {i+1}/{max_attempts}: {e}")
+        time.sleep(15)
     return False
 
 def create_database(url, master_pwd, db_name, admin_pwd, lang, country, demo):
+    """Créer une base de données Odoo"""
+    
+    # Données pour la création
     data = {
         'master_pwd': master_pwd,
         'name': db_name,
         'login': 'admin',
         'password': admin_pwd,
+        'phone': '',
         'lang': lang,
         'country_code': country,
-        'phone': '',
     }
     
     if demo:
-        data['demo'] = 'true'
+        data['demo'] = 'on'
     
     try:
-        response = requests.post(f"{url}/web/database/create", data=data, timeout=300)
-        return response.status_code == 200
+        print(f"Création de la base '{db_name}'...")
+        response = requests.post(
+            f"{url}/web/database/create",
+            data=data,
+            timeout=600,  # 10 minutes pour la création
+            allow_redirects=True
+        )
+        
+        if response.status_code == 200 and 'database_manager' not in response.url:
+            print(f"✓ Base '{db_name}' créée avec succès!")
+            return True
+        else:
+            print(f"✗ Erreur création: Status {response.status_code}")
+            print(f"URL finale: {response.url}")
+            return False
+            
     except Exception as e:
-        print(f"Erreur création base: {e}")
+        print(f"✗ Erreur création base: {e}")
         return False
 
+def get_database_list(url):
+    """Récupérer la liste des bases existantes"""
+    try:
+        response = requests.get(f"{url}/web/database/list", timeout=30)
+        if response.status_code == 200:
+            return response.json()
+        return []
+    except:
+        return []
+
 if __name__ == "__main__":
+    # Configuration
     odoo_url = "http://localhost:8069"
-    master_pwd = os.getenv('MASTER_PASSWORD', '')
-    db_name = os.getenv('DEFAULT_DB_NAME', 'lps_poc')
+    master_pwd = os.getenv('MASTER_PASSWORD', 'admin123')
+    db_name = os.getenv('DEFAULT_DB_NAME', 'odoo18_db')
     admin_pwd = os.getenv('ADMIN_PASSWORD', 'admin')
     lang = os.getenv('DEFAULT_LANGUAGE', 'fr_FR')
     country = os.getenv('DEFAULT_COUNTRY', 'FR')
-    demo = os.getenv('ENABLE_DEMO', 'true').lower() == 'true'
+    demo = os.getenv('ENABLE_DEMO', 'false').lower() == 'true'
     
-    print(f"Attente Odoo sur {odoo_url}...")
-    if wait_for_odoo(odoo_url):
-        print("Odoo accessible, création de la base...")
-        if create_database(odoo_url, master_pwd, db_name, admin_pwd, lang, country, demo):
-            print(f"Base {db_name} créée avec succès!")
-            # Sauvegarder les informations
-            with open('/home/ubuntu/DATABASE_INFO.txt', 'w') as f:
-                f.write(f"Base de données: {db_name}\n")
-                f.write(f"Utilisateur: admin\n")
-                f.write(f"Mot de passe: {admin_pwd}\n")
-                f.write(f"Master password: {master_pwd}\n")
-                f.write(f"Langue: {lang}\n")
-                f.write(f"Pays: {country}\n")
-                f.write(f"Données démo: {'Oui' if demo else 'Non'}\n")
-            print("Informations sauvées dans /home/ubuntu/DATABASE_INFO.txt")
-        else:
-            print("Erreur lors de la création de la base")
-            sys.exit(1)
-    else:
-        print("Impossible de contacter Odoo")
+    print("=== CREATION BASE ODOO 18 DOODBA ===")
+    print(f"URL: {odoo_url}")
+    print(f"Base: {db_name}")
+    print(f"Langue: {lang}")
+    print(f"Pays: {country}")
+    print(f"Démo: {'Oui' if demo else 'Non'}")
+    print()
+    
+    # Attendre Odoo
+    print("Attente de Odoo...")
+    if not wait_for_odoo(odoo_url):
+        print("✗ Impossible de contacter Odoo")
         sys.exit(1)
+    
+    # Vérifier si la base existe déjà
+    print("Vérification des bases existantes...")
+    existing_dbs = get_database_list(odoo_url)
+    if db_name in existing_dbs:
+        print(f"✓ Base '{db_name}' existe déjà")
+    else:
+        # Créer la base
+        if create_database(odoo_url, master_pwd, db_name, admin_pwd, lang, country, demo):
+            print("✓ Base créée avec succès!")
+        else:
+            print("✗ Échec création base")
+            sys.exit(1)
+    
+    # Sauvegarder les informations
+    info = {
+        'database': db_name,
+        'url': odoo_url,
+        'login': 'admin',
+        'password': admin_pwd,
+        'master_password': master_pwd,
+        'language': lang,
+        'country': country,
+        'demo_data': demo,
+        'version': '18.0',
+        'image': 'tecnativa/doodba',
+        'created': time.strftime('%Y-%m-%d %H:%M:%S')
+    }
+    
+    # Fichier texte lisible
+    with open('/home/ubuntu/DATABASE_INFO.txt', 'w') as f:
+        f.write("=== INFORMATIONS BASE ODOO 18 DOODBA ===\n")
+        f.write(f"Base de données: {info['database']}\n")
+        f.write(f"URL: {info['url']}\n")
+        f.write(f"Utilisateur: {info['login']}\n")
+        f.write(f"Mot de passe: {info['password']}\n")
+        f.write(f"Master password: {info['master_password']}\n")
+        f.write(f"Langue: {info['language']}\n")
+        f.write(f"Pays: {info['country']}\n")
+        f.write(f"Données démo: {'Oui' if info['demo_data'] else 'Non'}\n")
+        f.write(f"Version: {info['version']}\n")
+        f.write(f"Image: {info['image']}\n")
+        f.write(f"Créé le: {info['created']}\n")
+    
+    # Fichier JSON pour l'automatisation
+    with open('/home/ubuntu/database_info.json', 'w') as f:
+        json.dump(info, f, indent=2)
+    
+    print("✓ Informations sauvées dans /home/ubuntu/DATABASE_INFO.txt")
+    print("✓ Configuration JSON dans /home/ubuntu/database_info.json")
 PYTHONEOF
 
-# Script de backup
+# Script de backup optimisé pour Doodba
 cat > /opt/${project_name}/scripts/backup.sh << 'BACKUPEOF'
 #!/bin/bash
 BACKUP_DIR="/opt/${project_name}/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
+PROJECT_NAME="${project_name}"
+REGION_CODE="${region_code}"
+DEFAULT_DB_NAME="${default_db_name}"
 
-echo "=== DEBUT SAUVEGARDE $DATE ==="
+echo "=== BACKUP ODOO 18 DOODBA - $DATE ==="
+
+# Créer le répertoire de backup
+mkdir -p $BACKUP_DIR
 
 # Backup PostgreSQL complet
-docker exec ${project_name}-db-${region_code} pg_dumpall -U odoo > $BACKUP_DIR/postgres_full_$DATE.sql
+echo "Backup PostgreSQL complet..."
+docker exec ${PROJECT_NAME}-db-${REGION_CODE} pg_dumpall -U odoo > $BACKUP_DIR/postgres_full_$DATE.sql
+gzip $BACKUP_DIR/postgres_full_$DATE.sql
 
 # Backup base spécifique si elle existe
-if docker exec ${project_name}-db-${region_code} psql -U odoo -lqt | cut -d \| -f 1 | grep -qw ${default_db_name}; then
-    docker exec ${project_name}-db-${region_code} pg_dump -U odoo -d ${default_db_name} > $BACKUP_DIR/${default_db_name}_$DATE.sql
+if docker exec ${PROJECT_NAME}-db-${REGION_CODE} psql -U odoo -lqt | cut -d \| -f 1 | grep -qw ${DEFAULT_DB_NAME}; then
+    echo "Backup base ${DEFAULT_DB_NAME}..."
+    docker exec ${PROJECT_NAME}-db-${REGION_CODE} pg_dump -U odoo -d ${DEFAULT_DB_NAME} > $BACKUP_DIR/${DEFAULT_DB_NAME}_$DATE.sql
+    gzip $BACKUP_DIR/${DEFAULT_DB_NAME}_$DATE.sql
 fi
 
-# Backup volumes
-docker run --rm -v ${project_name}_db_data:/data -v $BACKUP_DIR:/backup alpine tar czf /backup/db_volume_$DATE.tar.gz -C /data .
-docker run --rm -v ${project_name}_odoo_data:/data -v $BACKUP_DIR:/backup alpine tar czf /backup/odoo_volume_$DATE.tar.gz -C /data .
+# Backup volumes Docker
+echo "Backup volumes Docker..."
+docker run --rm -v ${PROJECT_NAME}_db_data:/data -v $BACKUP_DIR:/backup alpine tar czf /backup/db_volume_$DATE.tar.gz -C /data .
+docker run --rm -v ${PROJECT_NAME}_odoo_data:/data -v $BACKUP_DIR:/backup alpine tar czf /backup/odoo_volume_$DATE.tar.gz -C /data .
 
-# Backup configuration
-tar czf $BACKUP_DIR/config_$DATE.tar.gz -C /opt/${project_name} configs/ custom-addons/
+# Backup configuration et addons
+echo "Backup configuration..."
+tar czf $BACKUP_DIR/config_$DATE.tar.gz -C /opt/${PROJECT_NAME} configs/ custom-addons/ private/
 
-# Nettoyer anciens backups
-find $BACKUP_DIR -name "*.sql" -mtime +7 -delete
+# Backup avec informations sur l'image
+echo "Création metadata backup..."
+cat > $BACKUP_DIR/backup_info_$DATE.json << INFOEOF
+{
+  "date": "$DATE",
+  "project": "${PROJECT_NAME}",
+  "region": "${REGION_CODE}",
+  "odoo_version": "18.0",
+  "image": "tecnativa/doodba",
+  "database": "${DEFAULT_DB_NAME}",
+  "backup_type": "full"
+}
+INFOEOF
+
+# Nettoyer anciens backups (garder 7 jours)
+echo "Nettoyage anciens backups..."
+find $BACKUP_DIR -name "*.sql.gz" -mtime +7 -delete
 find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
+find $BACKUP_DIR -name "*.json" -mtime +7 -delete
 
-echo "=== SAUVEGARDE TERMINEE $DATE ==="
+# Statistiques
+echo "=== BACKUP TERMINE ==="
+echo "Date: $DATE"
+echo "Taille totale: $(du -sh $BACKUP_DIR | cut -f1)"
+echo "Fichiers créés:"
+ls -lah $BACKUP_DIR/*$DATE*
 BACKUPEOF
 
-# Script de monitoring
+# Script de monitoring avancé
 cat > /opt/${project_name}/scripts/monitor.sh << 'MONITOREOF'
 #!/bin/bash
-echo "=== STATUS ${project_name} ==="
+
+PROJECT_NAME="${project_name}"
+REGION_CODE="${region_code}"
+REGION_CITY="${region_city}"
+
+echo "=== MONITORING ${PROJECT_NAME} - ODOO 18 DOODBA ==="
 echo "Date: $(date)"
+echo "Région: ${REGION_CITY} (${REGION_CODE})"
+echo ""
+
+echo "=== STATUS SYSTEME ==="
 echo "Timezone: $(timedatectl | grep 'Time zone')"
-echo "Ubuntu: ${ubuntu_version}"
+echo "Load: $(uptime | cut -d',' -f3- | cut -d':' -f2)"
+echo "Memory: $(free -h | grep Mem | awk '{print $3"/"$2}')"
+echo "Disk: $(df -h /opt/${PROJECT_NAME} | tail -1 | awk '{print $3"/"$2" ("$5")"}')"
 echo ""
-echo "=== SERVICES ==="
-systemctl status docker nginx ${project_name} --no-pager -l
+
+echo "=== SERVICES SYSTEME ==="
+for service in docker nginx ${PROJECT_NAME}; do
+    status=$(systemctl is-active $service)
+    echo "$service: $status"
+done
 echo ""
-echo "=== CONTAINERS ==="
-cd /opt/${project_name} && docker-compose ps
+
+echo "=== CONTAINERS DOCKER ==="
+cd /opt/${PROJECT_NAME}
+docker-compose ps
 echo ""
+
 echo "=== HEALTH CHECKS ==="
-curl -s http://localhost/health
+echo -n "Nginx: "
+curl -s -w "%{http_code}" http://localhost/health -o /dev/null
 echo ""
-curl -s http://localhost/metrics
+
+echo -n "Odoo: "
+curl -s -w "%{http_code}" http://localhost:8069/web/health -o /dev/null 2>/dev/null || echo "N/A"
 echo ""
-echo "=== ESPACE DISQUE ==="
-df -h /opt/${project_name}
+
+echo "=== INFORMATIONS ODOO ==="
+if docker ps | grep -q ${PROJECT_NAME}-app-${REGION_CODE}; then
+    echo "Container Odoo: ✓ Running"
+    echo "Version: 18.0 (Doodba)"
+    echo "Image: $(docker inspect ${PROJECT_NAME}-app-${REGION_CODE} | jq -r '.[0].Config.Image')"
+    echo "Uptime: $(docker inspect ${PROJECT_NAME}-app-${REGION_CODE} | jq -r '.[0].State.StartedAt')"
+else
+    echo "Container Odoo: ✗ Stopped"
+fi
 echo ""
-echo "=== DERNIERS LOGS ==="
-docker-compose logs --tail=10
+
+echo "=== BASE DE DONNEES ==="
+if docker ps | grep -q ${PROJECT_NAME}-db-${REGION_CODE}; then
+    echo "Container PostgreSQL: ✓ Running"
+    echo "Bases disponibles:"
+    docker exec ${PROJECT_NAME}-db-${REGION_CODE} psql -U odoo -l 2>/dev/null | grep -E '^\s+\w+' | head -10
+else
+    echo "Container PostgreSQL: ✗ Stopped"
+fi
+echo ""
+
+echo "=== LOGS RECENTS ==="
+echo "Derniers logs Odoo:"
+docker logs ${PROJECT_NAME}-app-${REGION_CODE} --tail=5 2>/dev/null || echo "Logs non disponibles"
+echo ""
+
+echo "=== CONNEXIONS ==="
+echo "Ports ouverts:"
+netstat -tlnp | grep -E ':(80|8069|5432)' | head -5
+echo ""
+
+echo "=== RESSOURCES ==="
+if command -v docker stats >/dev/null; then
+    echo "Stats containers (snapshot):"
+    timeout 3 docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" | head -5
+fi
 MONITOREOF
+
+# Script de mise à jour Doodba
+cat > /opt/${project_name}/scripts/update-doodba.sh << 'UPDATEEOF'
+#!/bin/bash
+PROJECT_NAME="${project_name}"
+REGION_CODE="${region_code}"
+
+echo "=== MISE A JOUR DOODBA ==="
+
+cd /opt/${PROJECT_NAME}
+
+# Sauvegarder avant mise à jour
+echo "Backup avant mise à jour..."
+./scripts/backup.sh
+
+# Arrêter les services
+echo "Arrêt des services..."
+docker-compose down
+
+# Mettre à jour l'image
+echo "Mise à jour image Doodba..."
+docker-compose pull
+
+# Redémarrer
+echo "Redémarrage..."
+docker-compose up -d
+
+# Vérifier
+sleep 30
+echo "Vérification après mise à jour..."
+./scripts/monitor.sh
+
+echo "=== MISE A JOUR TERMINEE ==="
+UPDATEEOF
 
 # Rendre les scripts exécutables
 chmod +x /opt/${project_name}/scripts/*.sh
 chmod +x /opt/${project_name}/scripts/*.py
 chown -R ubuntu:ubuntu /opt/${project_name}
 
-# Installation pip packages pour script Python
+# Installation packages Python
 log "Installation packages Python..."
 pip3 install requests
 
-# Vérification Docker Compose
-log "Verification Docker Compose..."
-docker-compose --version
-
 # Démarrage initial
-log "Demarrage initial des services..."
+log "Demarrage initial Doodba..."
 cd /opt/${project_name}
 
-# Démarrage avec logs pour diagnostiquer
-log "Tentative de démarrage Docker Compose..."
+# Pull de l'image Doodba
+log "Pull image Doodba 18.0..."
+docker-compose pull
+
+# Démarrage
+log "Demarrage services..."
 docker-compose up -d --remove-orphans
 
-# Vérifier le statut immédiatement
-log "Statut après démarrage..."
+# Vérifications immédiates
+log "Verifications immediates..."
+sleep 10
 docker-compose ps
-docker-compose logs
+docker-compose logs --tail=20
 
+# Démarrage service systemd
 systemctl start ${project_name}.service
 
-# Attente services - CORRECTION: délai plus réaliste
-log "Attente demarrage services..."
-for i in {1..30}; do
-    if systemctl is-active --quiet ${project_name}.service; then
-        log "Service ${project_name} actif"
-        break
-    fi
-    log "Tentative $i/30..."
-    sleep 20
-done
-
-# Vérification Docker containers
-log "Verification containers..."
-docker ps -a
-cd /opt/${project_name} && docker-compose logs
-
-# Attendre que Odoo soit complètement prêt - CORRECTION: endpoint correct
-log "Attente Odoo complet..."
+# Attendre que les services soient prêts
+log "Attente services (peut prendre quelques minutes avec Doodba)..."
 for i in {1..60}; do
-    if curl -f http://localhost:8069/web/database/selector > /dev/null 2>&1; then
-        log "Odoo operationnel"
+    if systemctl is-active --quiet ${project_name}.service; then
+        log "Service systemd actif"
         break
     fi
-    log "Attente Odoo... ($i/60)"
+    log "Attente service... ($i/60)"
     sleep 30
 done
 
-# Test final Odoo
-log "Test final Odoo..."
-curl -I http://localhost:8069/ || log "ERREUR: Odoo non accessible"
+# Attendre Odoo spécifiquement
+log "Attente Odoo Doodba (initialisation complète)..."
+for i in {1..90}; do
+    if curl -f -s http://localhost:8069/web/database/selector > /dev/null 2>&1; then
+        log "✓ Odoo Doodba operationnel!"
+        break
+    fi
+    log "Attente Odoo... ($i/90)"
+    sleep 20
+done
 
-# Création automatique de la base si demandée
+# Test final
+log "Test final connectivité..."
+curl -I http://localhost:8069/ || log "ATTENTION: Odoo non accessible"
+
+# Création base automatique si demandée
 if [ "${auto_create_db}" = "true" ]; then
-    log "Creation automatique de la base Odoo..."
+    log "Creation automatique base Odoo..."
     cd /opt/${project_name}/scripts
-    MASTER_PASSWORD="${master_password}" \
-    DEFAULT_DB_NAME="${default_db_name}" \
-    ADMIN_PASSWORD="${admin_password}" \
-    DEFAULT_LANGUAGE="${default_language}" \
-    DEFAULT_COUNTRY="${default_country}" \
-    ENABLE_DEMO="${enable_demo}" \
+    
+    # Export des variables pour le script Python
+    export MASTER_PASSWORD="${master_password}"
+    export DEFAULT_DB_NAME="${default_db_name}"
+    export ADMIN_PASSWORD="${admin_password}"
+    export DEFAULT_LANGUAGE="${default_language}"
+    export DEFAULT_COUNTRY="${default_country}"
+    export ENABLE_DEMO="${enable_demo}"
+    
     python3 create-odoo-db.py
     
     if [ $? -eq 0 ]; then
-        log "Base Odoo creee avec succes"
+        log "✓ Base Odoo creee avec succes"
     else
-        log "ERREUR: Echec creation base Odoo"
+        log "✗ ERREUR: Echec creation base"
     fi
 fi
 
-# Configuration cron pour sauvegardes
+# Configuration cron backups
 log "Configuration sauvegardes automatiques..."
-echo "0 2 * * * root /opt/${project_name}/scripts/backup.sh >> /var/log/backup.log 2>&1" > /etc/cron.d/${project_name}-backup
+cat > /etc/cron.d/${project_name}-backup << CRONEOF
+# Backup automatique Odoo 18 Doodba
+0 2 * * * root /opt/${project_name}/scripts/backup.sh >> /var/log/backup-${project_name}.log 2>&1
+# Monitoring quotidien
+0 8 * * * root /opt/${project_name}/scripts/monitor.sh >> /var/log/monitor-${project_name}.log 2>&1
+CRONEOF
+
 chmod 644 /etc/cron.d/${project_name}-backup
-
-# Vérifications finales
-log "Verifications finales..."
-systemctl status docker nginx ${project_name} --no-pager -l
-cd /opt/${project_name} && docker-compose ps
-docker logs ${project_name}-app-${region_code} --tail=20
-
-# Message final avec toutes les informations
-cat > /home/ubuntu/READY.txt << READYEOF
-=== ${project_name} PRET - ${region_city} (${region_code}) ===
-
-INFORMATIONS SYSTEME:
-- Ubuntu: ${ubuntu_version}
-- Timezone: ${timezone}
-
-ACCES ODOO:
-- Principal: http://VOTRE_IP_PUBLIQUE
-- Direct: http://VOTRE_IP_PUBLIQUE:8069
-- Health: http://VOTRE_IP_PUBLIQUE/health
-
-CONNEXION ODOO:
-- Base: ${default_db_name} $([ "${auto_create_db}" = "true" ] && echo "(créée automatiquement)" || echo "(à créer manuellement)")
-- Login: admin
-- Password: ${admin_password}
-- Master Password: ${master_password}
-- Langue: ${default_language}
-- Pays: ${default_country}
-
-SCRIPTS UTILES:
-- Status: sudo /opt/${project_name}/scripts/monitor.sh
-- Backup: sudo /opt/${project_name}/scripts/backup.sh
-- Créer base: sudo /opt/${project_name}/scripts/create-odoo-db.py
-
-SERVICES:
-- docker.service: $(systemctl is-active docker)
-- nginx.service: $(systemctl is-active nginx)
-- ${project_name}.service: $(systemctl is-active ${project_name}.service)
-
-STATUS: INSTALLATION TERMINEE - $(date)
-READYEOF
-
-# Copier informations base si créée
-if [ -f "/home/ubuntu/DATABASE_INFO.txt" ]; then
-    cat /home/ubuntu/DATABASE_INFO.txt >> /home/ubuntu/READY.txt
-fi
-
-chown ubuntu:ubuntu /home/ubuntu/READY.txt
-chown ubuntu:ubuntu /home/ubuntu/DATABASE_INFO.txt 2>/dev/null || true
-
-log "=== INSTALLATION TERMINEE - ${region_city} (${region_code}) ==="
-log "Ubuntu: ${ubuntu_version}"
-log "Services: $(systemctl is-active docker nginx ${project_name}.service)"
-log "Base Odoo: $([ "${auto_create_db}" = "true" ] && echo "Créée automatiquement" || echo "À créer manuellement")"
-
-# Log final pour diagnostic
-log "=== DIAGNOSTIC FINAL ==="
-log "Docker containers:"
-docker ps -a
-log "Docker Compose status:"
-cd /opt/${project_name} && docker-compose ps
-log "Ports en écoute:"
-netstat -tlnp | grep -E ':(80|8069)'
-log "Logs Odoo (dernières lignes):"
-docker logs ${project_name}-app-${region_code} --tail=10 2>/dev/null || log "Container Odoo non trouvé"
