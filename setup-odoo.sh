@@ -4,6 +4,25 @@
 set -e
 exec > >(tee /var/log/user-data.log) 2>&1
 
+echo "=== DEBUT INSTALLATION ==="
+
+# Injection de la variable timezone envoyée par Terraform (en minuscule)
+TIMEZONE="${timezone}"
+
+echo "Odoo Version: ${odoo_version}"
+echo "Ubuntu Version: ${ubuntu_version}"
+echo "Timezone avant fallback: '${TIMEZONE}'"
+
+if [ -z "$TIMEZONE" ]; then
+  echo "WARNING: TIMEZONE vide, fallback vers Europe/Paris" >> /var/log/user-data.log
+  TIMEZONE="Europe/Paris"
+fi
+
+echo "Timezone finale utilisée: '${TIMEZONE}'"
+
+timedatectl set-timezone "$TIMEZONE"
+
+echo "Configuration timezone terminée."
 
 # Variables Terraform
 PROJECT_NAME="${project_name}"
