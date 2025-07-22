@@ -4,6 +4,12 @@
 set -e
 exec > >(tee /var/log/user-data.log) 2>&1
 
+if [ -z "${TIMEZONE}" ]; then
+  echo "WARNING: TIMEZONE vide, fallback vers Europe/Paris" >> /var/log/user-data.log
+  TIMEZONE="Europe/Paris"
+fi
+
+timedatectl set-timezone "${TIMEZONE}"
 # Variables Terraform
 PROJECT_NAME="${project_name}"
 REGION_CODE="${region_code}"
