@@ -4,26 +4,26 @@
 set -e
 exec > >(tee /var/log/user-data.log) 2>&1
 
-# Récupération des variables passées en argument
-PROJECT_NAME="$1"
-REGION_CODE="$2"
-REGION_CITY="$3"
-ENVIRONMENT="$4"
-ODOO_VERSION="$5"
-ADMIN_PASSWORD="$6"
-DB_PASSWORD="$7"
-MASTER_PASSWORD="$8"
-ENABLE_DEMO="$9"
-AUTO_CREATE_DB="${10}"
-DEFAULT_DB_NAME="${11}"
-DEFAULT_LANGUAGE="${12}"
-DEFAULT_COUNTRY="${13}"
-TIMEZONE="${14}"
-POSTGRES_VERSION="${15}"
-MAX_CONNECTIONS="${16}"
-SHARED_BUFFERS="${17}"
-WORK_MEM="${18}"
-UBUNTU_VERSION="${19}"
+# Variables Terraform
+PROJECT_NAME="${project_name}"
+REGION_CODE="${region_code}"
+REGION_CITY="${region_city}"
+ENVIRONMENT="${environment}"
+ODOO_VERSION="18.0"  # Version fixe pour Odoo 18
+ADMIN_PASSWORD="${admin_password}"
+DB_PASSWORD="${db_password}"
+MASTER_PASSWORD="${master_password}"
+ENABLE_DEMO="${enable_demo}"
+AUTO_CREATE_DB="${auto_create_db}"
+DEFAULT_DB_NAME="${default_db_name}"
+DEFAULT_LANGUAGE="${default_language}"
+DEFAULT_COUNTRY="${default_country}"
+TIMEZONE="${timezone}"
+POSTGRES_VERSION="${postgres_version}"
+MAX_CONNECTIONS="${max_connections}"
+SHARED_BUFFERS="${shared_buffers}"
+WORK_MEM="${work_mem}"
+UBUNTU_VERSION="${ubuntu_version}"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [${region_code}] - $1"
