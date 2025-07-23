@@ -861,3 +861,28 @@ cat > /etc/cron.d/${project_name}-backup << CRONEOF
 CRONEOF
 
 chmod 644 /etc/cron.d/${project_name}-backup
+
+# --------------------------------------
+# 🐙 Clonage du dépôt Doodba et configuration
+# --------------------------------------
+
+echo "📥 Clonage du dépôt Doodba..."
+cd /home/ubuntu
+git clone https://github.com/Tecnativa/doodba.git odoo
+cd odoo
+
+echo "⚙️ Copie du fichier .env.example en .env..."
+cp .env.example .env
+
+# 👉 Optionnel : tu peux personnaliser ici le .env avec sed selon les variables du script
+
+echo "🐳 Lancement de Odoo avec Docker Compose..."
+docker compose up -d
+
+echo "✅ Odoo est en cours de démarrage."
+cd /home/ubuntu
+git clone https://github.com/Tecnativa/doodba.git odoo
+cd odoo
+cp .env.example .env
+docker compose up -d
+
