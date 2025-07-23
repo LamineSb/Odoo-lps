@@ -2,18 +2,60 @@
 # Installation Odoo 18 avec image Tecnativa Doodba - VERSION OPTIMISEE
 
 set -e
-#exec > >(tee /var/log/user-data.log) 2>&1
+exec > >(tee /var/log/user-data.log) 2>&1
 
 echo "=== DEBUT INSTALLATION ==="
 
+# --------------------------------------
+# 🔧 Installation des dépendances système
+# --------------------------------------
 
+echo "🔧 Mise à jour des paquets et installation des outils de base..."
 
-# Variables Terraform
+apt-get update -y
+apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg \
+    git \
+    python3 \
+    python3-pip \
+    software-properties-common \
+    lsb-release
+
+echo "🐳 Installation de Docker..."
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+
+add-apt-repository \
+   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) \
+   stable"
+
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io
+
+echo "📦 Installation de Docker Compose via pip..."
+pip3 install docker-compose
+
+echo "🔁 Redémarrage du service Docker..."
+systemctl enable docker
+systemctl start docker
+
+echo "👤 Ajout de l'utilisateur 'ubuntu' au groupe docker..."
+usermod -aG docker ubuntu
+
+# --------------------------------------
+# 📦 Variables Terraform / Paramètres Odoo
+# --------------------------------------
+
+echo "📦 Chargement des variables..."
+
 PROJECT_NAME="${project_name}"
 REGION_CODE="${region_code}"
 REGION_CITY="${region_city}"
 ENVIRONMENT="${environment}"
-ODOO_VERSION="18.0"  # Version fixe pour Odoo 18
+ODOO_VERSION="${odoo_version}"  # Version fixe pour Odoo 18
 ADMIN_PASSWORD="${admin_password}"
 DB_PASSWORD="${db_password}"
 MASTER_PASSWORD="${master_password}"
@@ -22,12 +64,22 @@ AUTO_CREATE_DB="${auto_create_db}"
 DEFAULT_DB_NAME="${default_db_name}"
 DEFAULT_LANGUAGE="${default_language}"
 DEFAULT_COUNTRY="${default_country}"
-TIMEZONE="${timezone}"
+TIMEZONE="${timezone:-Europe/Paris}"  # valeur par défaut
 POSTGRES_VERSION="${postgres_version}"
 MAX_CONNECTIONS="${max_connections}"
 SHARED_BUFFERS="${shared_buffers}"
 WORK_MEM="${work_mem}"
 UBUNTU_VERSION="${ubuntu_version}"
+
+# --------------------------------------
+# 🕒 Configuration du fuseau horaire
+# --------------------------------------
+
+echo "🕒 Configuration du fuseau horaire : $TIMEZONE"
+timedatectl set-timezone "$TIMEZONE" || echo "⚠️ Échec de la configuration du fuseau horaire : $TIMEZONE"
+
+echo "✅ Dépendances installées et fuseau horaire configuré."
+
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [${region_code}] - $1"
