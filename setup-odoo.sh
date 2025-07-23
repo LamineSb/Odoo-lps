@@ -1,10 +1,10 @@
 #!/bin/bash
-# Installation Odoo 18 avec image Tecnativa Doodba - VERSION OPTIMISEE
+# Installation Odoo 18 avec image Tecnativa Doodba - VERSION OPTIMISÉE
 
 set -e
-exec > >(tee /var/log/user-data.log) 2>&1
+exec > >(tee /var/log/setup-odoo.log) 2>&1
 
-echo "=== DEBUT INSTALLATION ==="
+echo "=== 🚀 DÉBUT INSTALLATION ODOO ==="
 
 # --------------------------------------
 # 🔧 Installation des dépendances système
@@ -14,23 +14,23 @@ echo "🔧 Mise à jour des paquets et installation des outils de base..."
 
 apt-get update -y
 apt-get install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg \
-    git \
-    python3 \
-    python3-pip \
-    software-properties-common \
-    lsb-release
+  apt-transport-https \
+  ca-certificates \
+  curl \
+  gnupg \
+  git \
+  python3 \
+  python3-pip \
+  software-properties-common \
+  lsb-release
 
 echo "🐳 Installation de Docker..."
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 
 add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
+  "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) \
+  stable"
 
 apt-get update -y
 apt-get install -y docker-ce docker-ce-cli containerd.io
@@ -46,32 +46,33 @@ echo "👤 Ajout de l'utilisateur 'ubuntu' au groupe docker..."
 usermod -aG docker ubuntu
 
 # --------------------------------------
-# 📦 Variables Terraform / Paramètres Odoo
+# 📦 Chargement des variables d’environnement
 # --------------------------------------
 
-echo "📦 Chargement des variables..."
+echo "📦 Lecture des variables d’environnement exportées..."
 
-PROJECT_NAME="${project_name:-demo-project}"
-REGION_CODE="${region_code:-eu-west-3}"
-REGION_CITY="${region_city:-paris}"
-ENVIRONMENT="${environment:-dev}"
-ODOO_VERSION="${odoo_version:-18.0}"  # Valeur par défaut
-ADMIN_PASSWORD="${admin_password:-admin}"
-DB_PASSWORD="${db_password:-odoo_db_pwd}"
-MASTER_PASSWORD="${master_password:-odoo_master_pwd}"
-ENABLE_DEMO="${enable_demo:-false}"
-AUTO_CREATE_DB="${auto_create_db:-true}"
-DEFAULT_DB_NAME="${default_db_name:-demo18}"
-DEFAULT_LANGUAGE="${default_language:-fr_FR}"
-DEFAULT_COUNTRY="${default_country:-FR}"
-TIMEZONE="${timezone:-Europe/Paris}"
-POSTGRES_VERSION="${postgres_version:-15}"
-MAX_CONNECTIONS="${max_connections:-100}"
-SHARED_BUFFERS="${shared_buffers:-128MB}"
-WORK_MEM="${work_mem:-4MB}"
-UBUNTU_VERSION="${ubuntu_version:-20.04}"
+# Valeurs par défaut si les variables ne sont pas passées
+PROJECT_NAME="${PROJECT_NAME:-demo-project}"
+REGION_CODE="${REGION_CODE:-eu-west-3}"
+REGION_CITY="${REGION_CITY:-paris}"
+ENVIRONMENT="${ENVIRONMENT:-dev}"
+ODOO_VERSION="${ODOO_VERSION:-18.0}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+DB_PASSWORD="${DB_PASSWORD:-odoo_db_pwd}"
+MASTER_PASSWORD="${MASTER_PASSWORD:-odoo_master_pwd}"
+ENABLE_DEMO="${ENABLE_DEMO:-false}"
+AUTO_CREATE_DB="${AUTO_CREATE_DB:-true}"
+DEFAULT_DB_NAME="${DEFAULT_DB_NAME:-demo18}"
+DEFAULT_LANGUAGE="${DEFAULT_LANGUAGE:-fr_FR}"
+DEFAULT_COUNTRY="${DEFAULT_COUNTRY:-FR}"
+TIMEZONE="${TIMEZONE:-Europe/Paris}"
+POSTGRES_VERSION="${POSTGRES_VERSION:-15}"
+MAX_CONNECTIONS="${MAX_CONNECTIONS:-100}"
+SHARED_BUFFERS="${SHARED_BUFFERS:-128MB}"
+WORK_MEM="${WORK_MEM:-4MB}"
+UBUNTU_VERSION="${UBUNTU_VERSION:-20.04}"
 
-echo "✅ Variables chargées :"
+echo "✅ Variables lues :"
 echo "→ PROJECT_NAME = $PROJECT_NAME"
 echo "→ ENVIRONMENT = $ENVIRONMENT"
 echo "→ REGION = $REGION_CODE / $REGION_CITY"
@@ -86,11 +87,15 @@ echo "→ POSTGRES_VERSION = $POSTGRES_VERSION"
 # 🕒 Configuration du fuseau horaire
 # --------------------------------------
 
-echo "🕒 Configuration du fuseau horaire : $TIMEZONE"
-timedatectl set-timezone "$TIMEZONE" || echo "⚠️ Échec de la configuration du fuseau horaire : $TIMEZONE"
+if [ -n "$TIMEZONE" ]; then
+  echo "🕒 Configuration du fuseau horaire : $TIMEZONE"
+  timedatectl set-timezone "$TIMEZONE" || echo "⚠️ Échec de la configuration du fuseau horaire."
+else
+  echo "⚠️ Aucune timezone définie."
+fi
 
-echo "✅ Dépendances installées et fuseau horaire configuré."
-
+echo "✅ Dépendances installées et timezone configurée."
+echo "=== ✅ FIN DU SCRIPT setup-odoo.sh ==="
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [${region_code}] - $1"
