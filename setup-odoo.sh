@@ -49,67 +49,75 @@ usermod -aG docker ubuntu
 # 📦 Chargement des variables d’environnement
 # --------------------------------------
 
-echo "📦 Lecture des variables d’environnement exportées..."
+echo "📦 Lecture des variables d'environnement exportées..."
 
-# Valeurs par défaut si les variables ne sont pas passées
-PROJECT_NAME="${PROJECT_NAME:-demo-project}"
-REGION_CODE="${REGION_CODE:-eu-west-3}"
-REGION_CITY="${REGION_CITY:-paris}"
-ENVIRONMENT="${ENVIRONMENT:-dev}"
-ODOO_VERSION="${ODOO_VERSION:-18.0}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
-DB_PASSWORD="${DB_PASSWORD:-odoo_db_pwd}"
-MASTER_PASSWORD="${MASTER_PASSWORD:-odoo_master_pwd}"
-ENABLE_DEMO="${ENABLE_DEMO:-false}"
-AUTO_CREATE_DB="${AUTO_CREATE_DB:-true}"
-DEFAULT_DB_NAME="${DEFAULT_DB_NAME:-demo18}"
-DEFAULT_LANGUAGE="${DEFAULT_LANGUAGE:-fr_FR}"
-DEFAULT_COUNTRY="${DEFAULT_COUNTRY:-FR}"
-TIMEZONE="${TIMEZONE:-Europe/Paris}"
-POSTGRES_VERSION="${POSTGRES_VERSION:-15}"
-MAX_CONNECTIONS="${MAX_CONNECTIONS:-100}"
-SHARED_BUFFERS="${SHARED_BUFFERS:-128MB}"
-WORK_MEM="${WORK_MEM:-4MB}"
-UBUNTU_VERSION="${UBUNTU_VERSION:-20.04}"
+# Utilisation des variables EXPORTÉES par user-data.sh (en MAJUSCULES)
+project_name="${PROJECT_NAME:-demo-project}"
+region_code="${REGION_CODE:-eu-west-3}"
+region_city="${REGION_CITY:-paris}"
+environment="${ENVIRONMENT:-dev}"
+odoo_version="${ODOO_VERSION:-18.0}"
+admin_password="${ADMIN_PASSWORD:-admin}"
+db_password="${DB_PASSWORD:-odoo_db_pwd}"
+master_password="${MASTER_PASSWORD:-odoo_master_pwd}"
+enable_demo="${ENABLE_DEMO:-false}"
+auto_create_db="${AUTO_CREATE_DB:-true}"
+default_db_name="${DEFAULT_DB_NAME:-demo18}"
+default_language="${DEFAULT_LANGUAGE:-fr_FR}"
+default_country="${DEFAULT_COUNTRY:-FR}"
+timezone="${TIMEZONE:-Europe/Paris}"
+postgres_version="${POSTGRES_VERSION:-15}"
+max_connections="${MAX_CONNECTIONS:-100}"
+shared_buffers="${SHARED_BUFFERS:-128MB}"
+work_mem="${WORK_MEM:-4MB}"
+ubuntu_version="${UBUNTU_VERSION:-20.04}"
 
 echo "✅ Variables lues :"
-echo "→ PROJECT_NAME = $PROJECT_NAME"
-echo "→ ENVIRONMENT = $ENVIRONMENT"
-echo "→ REGION = $REGION_CODE / $REGION_CITY"
-echo "→ ODOO_VERSION = $ODOO_VERSION"
-echo "→ DB_NAME = $DEFAULT_DB_NAME"
-echo "→ LANGUE = $DEFAULT_LANGUAGE"
-echo "→ PAYS = $DEFAULT_COUNTRY"
-echo "→ TIMEZONE = $TIMEZONE"
-echo "→ POSTGRES_VERSION = $POSTGRES_VERSION"
+echo "→ PROJECT_NAME = $project_name"
+echo "→ ENVIRONMENT = $environment"
+echo "→ REGION = $region_code / $region_city"
+echo "→ ODOO_VERSION = $odoo_version"
+echo "→ DB_NAME = $default_db_name"
+echo "→ LANGUE = $default_language"
+echo "→ PAYS = $default_country"
+echo "→ TIMEZONE = $timezone"
+echo "→ POSTGRES_VERSION = $postgres_version"
+echo "→ UBUNTU_VERSION = $ubuntu_version"
 
 # --------------------------------------
-# 🕒 Configuration du fuseau horaire
+# 🕒 Configuration du fuseau horaire - CORRIGÉ
 # --------------------------------------
 
-if [ -n "$TIMEZONE" ]; then
-  echo "🕒 Configuration du fuseau horaire : $TIMEZONE"
-  timedatectl set-timezone "$TIMEZONE" || echo "⚠️ Échec de la configuration du fuseau horaire."
+if [ -n "$timezone" ] && [ "$timezone" != "" ]; then
+  echo "🕒 Configuration du fuseau horaire : $timezone"
+  timedatectl set-timezone "$timezone" || echo "⚠️ Échec de la configuration du fuseau horaire."
 else
-  echo "⚠️ Aucune timezone définie."
+  echo "⚠️ Aucune timezone définie, utilisation de Europe/Paris par défaut"
+  timezone="Europe/Paris"
+  timedatectl set-timezone "$timezone"
 fi
 
 echo "✅ Dépendances installées et timezone configurée."
 echo "=== ✅ FIN DU SCRIPT setup-odoo.sh ==="
 
+# Fonction log corrigée
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [${region_code}] - $1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$region_code] - $1"
 }
 
 log "=== DEBUT INSTALLATION ${project_name} - ${region_city} (${region_code}) ==="
-log "Odoo Version: 18.0 avec Doodba"
-log "Ubuntu Version: ${ubuntu_version}"
-log "Timezone: ${timezone}"
+log "Odoo Version: $odoo_version avec Doodba"
+log "Ubuntu Version: $ubuntu_version"
+log "Timezone: $timezone"
 
-# Configuration timezone
+# Configuration timezone (vérification supplémentaire)
 log "Configuration timezone..."
-timedatectl set-timezone "${timezone}"
-
+if [ -n "$timezone" ]; then
+    timedatectl set-timezone "$timezone"
+    log "✅ Timezone configurée: $(timedatectl | grep 'Time zone' | cut -d: -f2 | cut -d' ' -f2)"
+else
+    log "⚠️ Variable timezone vide, configuration par défaut"
+fi
 # Mise a jour
 log "Mise a jour Ubuntu..."
 apt update -y && apt upgrade -y
