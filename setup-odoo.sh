@@ -269,9 +269,9 @@ networks:
           gateway: 172.20.0.1
 DOCKEREOF
 
-# Correction rapportée ici : tous les \$ des variables Nginx sont bien échappés !
+# Configuration Nginx corrigée avec toutes les variables $ échappées
 log "Configuration Nginx reverse proxy..."
-cat > /etc/nginx/sites-available/default << NGINXEOF
+cat > /etc/nginx/sites-available/default << 'NGINXEOF'
 upstream odoo {
     server 127.0.0.1:8069;
 }
@@ -282,6 +282,7 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
+    
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options DENY;
     add_header X-XSS-Protection "1; mode=block";
@@ -291,20 +292,23 @@ server {
     add_header X-Environment "${environment}" always;
     add_header X-Project "${project_name}" always;
     add_header X-Odoo-Version "18.0-doodba-trial" always;
+    
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
     gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json image/svg+xml;
+    
     client_max_body_size 50M;
+    
     location / {
         proxy_pass http://odoo;
         proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
         proxy_redirect off;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Host \$server_name;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $server_name;
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
@@ -313,22 +317,24 @@ server {
         proxy_busy_buffers_size 64k;
         proxy_temp_file_write_size 64k;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
+    
     location /longpolling {
         proxy_pass http://odoochat;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header X-Forwarded-Host \$host;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
     }
+    
     location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         proxy_pass http://odoo;
         proxy_cache_valid 200 302 1h;
@@ -336,24 +342,28 @@ server {
         add_header Cache-Control "public, max-age=3600";
         expires 1h;
     }
+    
     location /health {
         access_log off;
-        return 200 "OK - ${project_name} Trial - ${region_city} (${region_code}) - \$(date)";
+        return 200 "OK - ${project_name} Trial - ${region_city} (${region_code})";
         add_header Content-Type text/plain;
     }
+    
     location /status {
         access_log off;
-        return 200 "READY - ${project_name} - Odoo 18.0 Trial - \$(date)";
+        return 200 "READY - ${project_name} - Odoo 18.0 Trial";
         add_header Content-Type text/plain;
     }
+    
     location /metrics {
         access_log off;
-        return 200 "# HELP odoo_status Odoo Trial Status\\n# TYPE odoo_status gauge\\nodoo_status{version=\\"18.0\\",image=\\"doodba-trial\\",region=\\"${region_code}\\",environment=\\"${environment}\\"} 1\\n";
+        return 200 "# HELP odoo_status Odoo Trial Status\n# TYPE odoo_status gauge\nodoo_status{version=\"18.0\",image=\"doodba-trial\",region=\"${region_code}\",environment=\"${environment}\"} 1\n";
         add_header Content-Type text/plain;
     }
+    
     location /trial-info {
         access_log off;
-        return 200 "=== ODOO 18 TRIAL INFO ===\\nProject: ${project_name}\\nRegion: ${region_city} (${region_code})\\nEnvironment: ${environment}\\nDatabase: ${default_db_name}\\nDemo Data: ${enable_demo}\\nAccess: http://\$host\\nLogin: admin\\n";
+        return 200 "=== ODOO 18 TRIAL INFO ===\nProject: ${project_name}\nRegion: ${region_city} (${region_code})\nEnvironment: ${environment}\nDatabase: ${default_db_name}\nDemo Data: ${enable_demo}\nAccess: http://\$host\nLogin: admin\n";
         add_header Content-Type text/plain;
     }
 }
