@@ -2,10 +2,9 @@
 # Installation Odoo 18 avec image Tecnativa Doodba - VERSION FINALE POUR TRIAL
 
 set -e
-
 echo "=== DEBUT INSTALLATION ODOO 18 DOODBA - TRIAL VERSION ==="
 
-# Déclaration des variables avec valeurs par défaut
+# === Variables principales ===
 project_name="${PROJECT_NAME:-odoo-trial}"
 region_code="${REGION_CODE:-us-east-1}"
 region_city="${REGION_CITY:-virginia}"
@@ -39,16 +38,9 @@ log "Base de données: ${default_db_name}"
 log "Données démo: ${enable_demo}"
 log "Timezone: ${timezone}"
 
-# Configuration timezone
-log "Configuration timezone..."
 timedatectl set-timezone "${timezone}"
 
-# Mise à jour système
-log "Mise à jour Ubuntu ${ubuntu_version}..."
 apt update -y && apt upgrade -y
-
-# Installation Docker
-log "Installation Docker..."
 apt install -y ca-certificates curl gnupg lsb-release
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -63,29 +55,19 @@ systemctl enable docker
 usermod -aG docker ubuntu
 docker --version || { log "ERREUR: Docker non installé correctement"; exit 1; }
 
-# Installation Docker Compose
-log "Installation Docker Compose..."
 COMPOSE_VERSION="v2.30.3"
 curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 docker-compose --version || { log "ERREUR: Docker Compose non installé"; exit 1; }
 
-# Utilitaires système
-log "Installation utilitaires..."
 apt install -y nginx htop curl wget git jq tree vim
 
-# Python - Installation via APT
-log "Installation Python packages..."
 apt install -y python3-requests python3-setuptools python3-pip
 python3 -c "import requests; print('✓ Python requests OK')" || { log "ERREUR: Python requests non disponible"; exit 1; }
 
-# Structure des dossiers
-log "Création structure projet..."
 mkdir -p /opt/${project_name}/{configs,scripts,backups,logs,custom-addons,private,data}
 chown -R ubuntu:ubuntu /opt/${project_name}
 
-# Configuration Odoo optimisée pour trial
-log "Configuration Odoo pour Doodba..."
 cat > /opt/${project_name}/configs/odoo.conf << ODOOCONF
 [options]
 addons_path = /opt/odoo/custom/src/private,/opt/odoo/custom/src/repos,/opt/odoo/auto/addons,/opt/odoo/addons
@@ -115,8 +97,6 @@ limit_time_cpu = 600
 limit_time_real = 1200
 ODOOCONF
 
-# Configuration des repositories Doodba
-log "Configuration repos.yaml..."
 cat > /opt/${project_name}/configs/repos.yaml << REPOSEOF
 ./odoo:
   defaults:
@@ -127,20 +107,8 @@ cat > /opt/${project_name}/configs/repos.yaml << REPOSEOF
     origin ${odoo_version}
   merges:
     - origin ${odoo_version}
-
-# ./enterprise:
-#   defaults:
-#     depth: 1
-#   remotes:
-#     origin: https://github.com/odoo/enterprise.git
-#   target:
-#     origin ${odoo_version}
-#   merges:
-#     - origin ${odoo_version}
 REPOSEOF
 
-# Configuration des addons pour POC
-log "Configuration addons.yaml..."
 cat > /opt/${project_name}/configs/addons.yaml << ADDONSEOF
 server_wide:
   - base
@@ -161,11 +129,8 @@ odoo:
   - payment
 ADDONSEOF
 
-# Docker Compose - Configuration optimisée pour trial
-log "Configuration Docker Compose pour trial..."
 cat > /opt/${project_name}/docker-compose.yml << DOCKEREOF
 version: '3.8'
-
 services:
   db:
     image: postgres:${postgres_version}-alpine
@@ -206,7 +171,7 @@ services:
       - "traefik.enable=false"
 
   odoo:
-    image: tecnativa/doodba:18.0-20241201
+    image: tecnativa/doodba:18.0
     container_name: ${project_name}-app-${region_code}
     depends_on:
       db:
@@ -269,9 +234,8 @@ networks:
           gateway: 172.20.0.1
 DOCKEREOF
 
-# Configuration Nginx corrigée avec toutes les variables $ échappées
-log "Configuration Nginx reverse proxy..."
-cat > /etc/nginx/sites-available/default << 'NGINXEOF'
+# Correction Nginx — configuration minimale et robuste
+cat > /etc/nginx/sites-available/default <<'EOF'
 upstream odoo {
     server 127.0.0.1:8069;
 }
@@ -282,24 +246,15 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
-    
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options DENY;
     add_header X-XSS-Protection "1; mode=block";
     add_header Referrer-Policy "strict-origin-when-cross-origin";
-    add_header X-Region "${region_code}" always;
-    add_header X-City "${region_city}" always;
-    add_header X-Environment "${environment}" always;
-    add_header X-Project "${project_name}" always;
-    add_header X-Odoo-Version "18.0-doodba-trial" always;
-    
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
     gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json image/svg+xml;
-    
     client_max_body_size 50M;
-    
     location / {
         proxy_pass http://odoo;
         proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
@@ -320,7 +275,6 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
-    
     location /longpolling {
         proxy_pass http://odoochat;
         proxy_http_version 1.1;
@@ -334,7 +288,6 @@ server {
         proxy_send_timeout 300s;
         proxy_read_timeout 300s;
     }
-    
     location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         proxy_pass http://odoo;
         proxy_cache_valid 200 302 1h;
@@ -342,39 +295,23 @@ server {
         add_header Cache-Control "public, max-age=3600";
         expires 1h;
     }
-    
     location /health {
         access_log off;
-        return 200 "OK - ${project_name} Trial - ${region_city} (${region_code})";
+        return 200 "OK";
         add_header Content-Type text/plain;
     }
-    
     location /status {
         access_log off;
-        return 200 "READY - ${project_name} - Odoo 18.0 Trial";
-        add_header Content-Type text/plain;
-    }
-    
-    location /metrics {
-        access_log off;
-        return 200 "# HELP odoo_status Odoo Trial Status\n# TYPE odoo_status gauge\nodoo_status{version=\"18.0\",image=\"doodba-trial\",region=\"${region_code}\",environment=\"${environment}\"} 1\n";
-        add_header Content-Type text/plain;
-    }
-    
-    location /trial-info {
-        access_log off;
-        return 200 "=== ODOO 18 TRIAL INFO ===\nProject: ${project_name}\nRegion: ${region_city} (${region_code})\nEnvironment: ${environment}\nDatabase: ${default_db_name}\nDemo Data: ${enable_demo}\nAccess: http://\$host\nLogin: admin\n";
+        return 200 "Odoo is running";
         add_header Content-Type text/plain;
     }
 }
-NGINXEOF
+EOF
 
-# Test et activation Nginx
-log "Test et activation Nginx..."
 nginx -t && systemctl restart nginx && systemctl enable nginx
 
-# Service systemd pour gestion automatique
-log "Création service systemd..."
+# Suite comme avant : service systemd, droits, docker, tests de connectivité…
+
 cat > /etc/systemd/system/${project_name}.service << SYSTEMDEOF
 [Unit]
 Description=${project_name} Odoo 18.0 Trial
@@ -406,59 +343,33 @@ SYSTEMDEOF
 systemctl daemon-reload
 systemctl enable ${project_name}.service
 
-# ==== Suivent les scripts python et .sh, aucune modification requise ici ====
-
-# --- SCRIPTS UTILITAIRES (copier ton bloc existant pour create-database.py et monitor.sh, aucun $ nginx dedans) ---
-
-(...)
-
-# Rendre les scripts exécutables
 chmod +x /opt/${project_name}/scripts/*.py
 chmod +x /opt/${project_name}/scripts/*.sh
 chown -R ubuntu:ubuntu /opt/${project_name}
 
-# Démarrage des services
-log "Démarrage des services Docker..."
 cd /opt/${project_name}
-
-log "Téléchargement des images Docker..."
 docker-compose pull
-
-log "Démarrage des conteneurs..."
 docker-compose up -d --remove-orphans
 
 sleep 15
-log "Vérification des conteneurs..."
 docker-compose ps
 
 systemctl start ${project_name}.service
 
-log "Attente de la disponibilité des services (peut prendre 3-5 minutes)..."
 for i in {1..60}; do
-    if systemctl is-active --quiet ${project_name}.service; then
-        log "✓ Service systemd actif"
-        break
-    fi
-    log "Attente du service systemd... ($i/60)"
-    sleep 15
+    if systemctl is-active --quiet ${project_name}.service; then log "✓ Service systemd actif"; break; fi
+    log "Attente du service systemd... ($i/60)"; sleep 15
 done
 
-log "Attente de la disponibilité d'Odoo..."
 for i in {1..90}; do
-    if curl -f -s http://localhost:8069/web/database/selector > /dev/null 2>&1; then
-        log "✓ Odoo est accessible!"
-        break
-    fi
-    log "Attente d'Odoo... ($i/90)"
-    sleep 20
+    if curl -f -s http://localhost:8069/web/database/selector > /dev/null 2>&1; then log "✓ Odoo est accessible!"; break; fi
+    log "Attente d'Odoo... ($i/90)"; sleep 20
 done
 
-log "Tests de connectivité finale..."
 echo "Nginx:" $(curl -s -w "%{http_code}" http://localhost/health -o /dev/null)
 echo "Odoo:" $(curl -s -w "%{http_code}" http://localhost:8069/web/health -o /dev/null 2>/dev/null || echo "N/A")
 
 if [ "${auto_create_db}" = "true" ]; then
-    log "Création automatique de la base de données..."
     cd /opt/${project_name}/scripts
     export MASTER_PASSWORD="${master_password}"
     export DEFAULT_DB_NAME="${default_db_name}"
@@ -467,50 +378,27 @@ if [ "${auto_create_db}" = "true" ]; then
     export DEFAULT_COUNTRY="${default_country}"
     export ENABLE_DEMO="${enable_demo}"
     python3 create-database.py
-    if [ $? -eq 0 ]; then
-        log "✓ Base de données créée avec succès!"
-    else
-        log "⚠ Création de base échouée - vous pouvez la créer manuellement"
-    fi
+    if [ $? -eq 0 ]; then log "✓ Base de données créée avec succès!"; else log "⚠ Création de base échouée - vous pouvez la créer manuellement"; fi
 fi
 
-# Configuration des tâches automatiques
-log "Configuration des tâches automatiques..."
 cat > /etc/cron.d/${project_name}-maintenance << CRONEOF
 0 2 * * 0 root cd /opt/${project_name} && docker-compose exec -T db pg_dumpall -U odoo | gzip > /opt/${project_name}/backups/weekly_backup_\$(date +\\%Y\\%m\\%d).sql.gz
 0 8 * * * root /opt/${project_name}/scripts/monitor.sh >> /var/log/${project_name}-monitor.log 2>&1
 0 3 1 * * root find /opt/${project_name}/logs -name "*.log" -mtime +30 -delete
 CRONEOF
-
 chmod 644 /etc/cron.d/${project_name}-maintenance
 
 log "=========================================="
 log "INSTALLATION ODOO 18 TRIAL TERMINÉE"
-log "=========================================="
 log "Projet: ${project_name}"
 log "Région: ${region_city} (${region_code})"
 log "Environnement: ${environment}"
 log "Base de données: ${default_db_name}"
 log "Données de démo: ${enable_demo}"
-log ""
 log "ACCÈS:"
 log "- URL locale: http://localhost"
 log "- URL publique: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo 'VOTRE_IP_PUBLIQUE')"
 log "- Port Odoo direct: 8069"
-log ""
-log "MONITORING:"
-log "- Status: /opt/${project_name}/scripts/monitor.sh"
-log "- Logs: docker-compose logs -f"
-log "- Service: systemctl status ${project_name}"
-log ""
-log "INFORMATIONS DE CONNEXION:"
-log "- Fichier: /home/ubuntu/ODOO_TRIAL_INFO.txt"
-log "- Login par défaut: admin"
-log "- Mot de passe: ${admin_password}"
-log ""
-log "Pour surveiller l'installation:"
-log "sudo tail -f /var/log/syslog"
-log "docker-compose logs -f"
 log ""
 log "=========================================="
 log "INSTALLATION TERMINÉE - ODOO 18 TRIAL PRÊT!"
