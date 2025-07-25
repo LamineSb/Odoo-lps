@@ -248,7 +248,7 @@ services:
       - odoo_network
 
   odoo:
-    image: tecnativa/doodba:18.0-20241201
+    image: tecnativa/doodba:18.0
     container_name: ${project_name}-app-${region_code}
     depends_on:
       db:
