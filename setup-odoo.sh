@@ -7,9 +7,9 @@ echo "=== DEBUT INSTALLATION ==="
 
 # Variables avec valeurs par défaut (plus robuste que Terraform)
 project_name="${PROJECT_NAME:-demo-project}"
-region_code="${REGION_CODE:-eu-west-3}"
+region_code="${REGION_CODE:-es-east-1}"
 region_city="${REGION_CITY:-paris}"
-environment="${ENVIRONMENT:-dev}"
+environment="${ENVIRONMENT:-poc}"
 odoo_version="${ODOO_VERSION:-18.0}"
 admin_password="${ADMIN_PASSWORD:-admin}"
 db_password="${DB_PASSWORD:-odoo_db_pwd}"
