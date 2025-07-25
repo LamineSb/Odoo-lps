@@ -130,7 +130,6 @@ odoo:
 ADDONSEOF
 
 cat > /opt/${project_name}/docker-compose.yml << DOCKEREOF
-version: '3.8'
 services:
   db:
     image: postgres:${postgres_version}-alpine
@@ -220,15 +219,12 @@ services:
 
 volumes:
   db_data:
-    driver: local
   odoo_data:
-    driver: local
 
 networks:
   odoo_network:
     driver: bridge
     ipam:
-      driver: default
       config:
         - subnet: 172.20.0.0/16
           gateway: 172.20.0.1
